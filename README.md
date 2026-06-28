@@ -1,7 +1,7 @@
 # Codex Remote Control
 
 Pair a Linux machine with the **ChatGPT Codex app** so you can drive it remotely
-from your phone — set up in one command.
+from your phone.
 
 ## Quick start
 
@@ -32,21 +32,12 @@ No extra Python packages are needed — the script uses only the standard librar
 
 ## What the script does
 
-`codex-pair.py` walks the whole host-side setup and reports `[ OK ]` / `[WARN]` /
-`[FAIL]` for each step, so you can see exactly where things stand. In order, it:
+`codex-pair.py` runs the whole setup and prints `[ OK ]` / `[WARN]` / `[FAIL]`
+for each step: it checks your `codex` login, starts the remote-control daemon,
+enrolls the host, and prints a pairing code for the phone.
 
-1. **Checks the `codex` CLI** is installed and on your `PATH`.
-2. **Reads your login** from `auth.json` and verifies the token is still valid
-   server-side (a real API call, not just a local check).
-3. **Checks connectivity** — runs `codex doctor` to confirm the WebSocket needed
-   for remote control can reach `chatgpt.com`.
-4. **Verifies the standalone install** that the remote-control daemon depends on.
-5. **Starts the remote-control daemon** and confirms it reports `connected`.
-6. **Enrolls this host** with ChatGPT and mints a **manual pairing code**.
-7. **Waits for the phone to pair** (by default), then offers to enable autostart.
-
-If a required step fails, the script stops and prints the exact command to fix
-it — resolve it and run the script again.
+If a step fails, it stops and shows the exact command to fix it — resolve it and
+run the script again.
 
 ### Start on boot
 
