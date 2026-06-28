@@ -1,66 +1,84 @@
 # Codex Remote Control
 
-This directory contains a standalone helper script for setting up Codex remote
-control on a Linux host and pairing it with the Codex phone app.
+Set up [Codex](https://chatgpt.com/codex) remote control on a Linux machine and
+pair it with the Codex phone app — in one command.
 
-## File
+Run the helper on the computer you want to control from your phone. It checks
+that everything is ready, starts the remote-control service, and prints a
+pairing code to type into the app.
 
-- `codex-rc-up-next.py` - one-shot setup and pairing helper.
+## Requirements
 
-## What the script does
+- Linux with **Python 3**
+- The **`codex` CLI** installed and on your `PATH`
+  ```bash
+  curl -fsSL https://chatgpt.com/codex/install.sh | sh
+  ```
+- A logged-in Codex account (`codex login`)
+- Internet access to `chatgpt.com` (including WebSocket connections)
 
-The script runs a checklist for a Codex CLI remote-control host, starts the
-remote-control daemon, enrolls the host with ChatGPT, mints a manual pairing
-code, and optionally waits until the phone claims that code.
+No extra Python packages are needed — the script uses only the standard library.
 
-It uses only the Python standard library. The host still needs:
-
-- Python 3.
-- The `codex` CLI on `PATH`.
-- A logged-in Codex account, usually from `codex login`.
-- Network access to `chatgpt.com`, including WebSocket access.
-- The standalone Codex CLI install for the remote-control daemon.
-
-## Usage
-
-Run the helper on the machine you want to control:
+## Quick start
 
 ```bash
-python3 codex-rc-up-next.py
+python3 codex-pair.py
 ```
 
-The script prints status lines for each check. If setup reaches the pairing
-step, it prints a pairing code for the phone app:
+You'll see a checklist, and then a pairing code:
 
 ```text
 PAIRING CODE:  XXXX-XXXX
 ```
 
-Enter that code in the Codex phone app under the device-pairing flow.
+Open the Codex app on your phone, choose **pair a device**, and enter the code.
+By default the script waits until the phone pairs, then offers to start Codex
+remote control automatically on boot.
 
-Useful options:
-
-```bash
-python3 codex-rc-up-next.py --no-wait
-python3 codex-rc-up-next.py --wait 120
-CODEX_HOME=/custom/path python3 codex-rc-up-next.py
-```
-
-- `--no-wait` prints the pairing code and exits.
-- `--wait 120` waits up to 120 seconds for the phone to pair.
-- `CODEX_HOME` points the script at a non-default Codex configuration directory.
-
-## Exit Codes
-
-- `0` means pairing succeeded, or `--no-wait` successfully produced a code.
-- `1` means a required check failed or pairing timed out.
-
-## Notes
-
-If the daemon cannot start, the script may still produce a pairing code, but the
-host can remain offline until `codex remote-control start` succeeds. If the auth
-token has expired or been revoked, re-run login with:
+## Options
 
 ```bash
-codex login --device-auth
+python3 codex-pair.py --no-wait        # print the code and exit
+python3 codex-pair.py --wait 120       # wait up to 120 seconds for pairing
+CODEX_HOME=/custom/path python3 codex-pair.py
 ```
+
+| Option            | What it does                                                        |
+| ----------------- | ------------------------------------------------------------------- |
+| `--no-wait`       | Print the pairing code and exit instead of waiting for the phone.   |
+| `--wait <seconds>`| Wait up to N seconds for pairing (default: until the code expires). |
+| `CODEX_HOME`      | Point at a non-default Codex configuration directory.               |
+
+## Start on boot
+
+After pairing, the script can keep your machine controllable across reboots. It
+detects how your system starts background services and sets up the best option
+automatically:
+
+- **systemd** — installs a user service and enables it (with linger so it starts
+  at boot, before you log in).
+- **cron** — falls back to an `@reboot` job when a systemd user service isn't
+  available.
+
+You'll be asked before anything is installed.
+
+## Exit codes
+
+- `0` — paired successfully, or `--no-wait` produced a code.
+- `1` — a required check failed, or pairing timed out.
+
+## Troubleshooting
+
+- **A check failed.** The checklist prints `[FAIL]` with the reason and the exact
+  command to fix it. Resolve it and run the script again.
+- **The code expired.** Codes are short-lived. Just re-run the script to mint a
+  fresh one.
+- **Login expired or was revoked.** Sign in again:
+  ```bash
+  codex login --device-auth
+  ```
+- **Paired, but the host shows offline.** The pairing succeeded but the
+  remote-control service isn't running. Start it manually:
+  ```bash
+  codex remote-control start
+  ```
