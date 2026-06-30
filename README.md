@@ -1,4 +1,4 @@
-# Codex Remote Control
+# Codex Linux Pair
 
 Pair a Linux machine with the **ChatGPT Codex app** so you can drive it remotely
 from your phone.
@@ -28,21 +28,25 @@ Open the Codex app, choose **pair a device**, and enter the code. That's it.
   ```
 - Internet access to `chatgpt.com` (including WebSocket connections)
 
-No extra Python packages are needed — the script uses only the standard library.
+No extra Python packages are needed - the script uses only the standard library.
 
 ## What the script does
 
 `codex-pair.py` runs the whole setup and prints `[ OK ]` / `[WARN]` / `[FAIL]`
 for each step:
 
-1. Checks the `codex` CLI and your login.
-2. Confirms it can reach `chatgpt.com`.
-3. Starts the remote-control daemon.
-4. Enrolls the host and mints a pairing code.
-5. Waits for the phone to pair, then offers to enable autostart.
+1. Checks that the `codex` CLI is on `PATH`.
+2. Reads `CODEX_HOME/auth.json` and confirms the token works server-side.
+3. Checks WebSocket reachability with `codex doctor`.
+4. Verifies the standalone managed Codex install used by the daemon.
+5. Starts the remote-control daemon and reports whether it connected.
+6. Resolves or creates the local installation id.
+7. Enrolls the host and mints a manual pairing code.
+8. Waits for the phone to pair, then offers to enable autostart.
 
-If a step fails, it stops and shows the exact command to fix it — resolve it and
-run the script again.
+If a step fails, it stops and shows the exact command to fix it - resolve it and
+run the script again. Warnings do not always stop pairing, but they may explain
+why the host pairs and still appears offline.
 
 ### Start on boot
 
@@ -52,10 +56,14 @@ anything). Pass `--install-startup` to install it automatically after pairing
 instead of prompting. If startup is enabled, it picks the right mechanism
 automatically:
 
-- **systemd** — installs a user service, enables it, and turns on linger so it
-  starts at boot before you log in.
-- **cron** — falls back to an `@reboot` job when no systemd user service is
-  available.
+- **systemd user service** - writes
+  `~/.config/systemd/user/codex-remote-control.service`, enables it, starts it,
+  and turns on linger so it can start at boot before you log in.
+- **cron** - installs an `@reboot` job when no usable systemd user manager is
+  available, including OpenRC-style systems with `crontab`.
+
+Cron startup output is written to
+`$CODEX_HOME/remote-control-autostart.log`.
 
 ## Options
 
@@ -80,8 +88,8 @@ CODEX_HOME=/custom/path python3 codex-pair.py
 
 ## Exit codes
 
-- `0` — paired successfully, or `--no-wait` produced a code.
-- `1` — a required check failed, or pairing timed out.
+- `0` - paired successfully, or `--no-wait` produced a code.
+- `1` - a required check failed, or pairing timed out.
 
 ## Troubleshooting
 
@@ -93,8 +101,18 @@ CODEX_HOME=/custom/path python3 codex-pair.py
   ```bash
   codex login --device-auth
   ```
+- **Standalone managed install is missing.** Reinstall the Codex CLI with the
+  official installer. The script can still mint a code, but the host will stay
+  offline until the daemon can run:
+  ```bash
+  curl -fsSL https://chatgpt.com/codex/install.sh | sh
+  ```
 - **Paired, but the host shows offline.** The pairing succeeded but the
   remote-control service isn't running. Start it manually:
   ```bash
   codex remote-control start
+  ```
+- **Autostart used cron.** Check the startup log:
+  ```bash
+  tail -n 100 ~/.codex/remote-control-autostart.log
   ```
