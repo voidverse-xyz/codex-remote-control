@@ -179,7 +179,11 @@ def prompt_yes_no(question):
         return False
 
     while True:
-        answer = input(f"{question} [y/N] ").strip().lower()
+        try:
+            answer = input(f"{question} [y/N] ").strip().lower()
+        except EOFError:
+            print()
+            return False
         if answer in ("", "n", "no"):
             return False
         if answer in ("y", "yes"):
@@ -563,12 +567,20 @@ def wait_for_pairing(server_token, account, full_code, manual_code, window, inst
     sys.exit(1)
 
 
+def nonnegative_int(value):
+    seconds = int(value)
+    if seconds < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return seconds
+
+
 def parse_args():
     ap = argparse.ArgumentParser(description="Codex remote-control setup + checklist")
-    ap.add_argument("--no-wait", action="store_true",
-                    help="just print the code and exit; do not wait for the phone to pair")
-    ap.add_argument("--wait", type=int, default=None,
-                    help="seconds to wait for pairing (default: until the code expires)")
+    wait_group = ap.add_mutually_exclusive_group()
+    wait_group.add_argument("--no-wait", action="store_true",
+                            help="just print the code and exit; do not wait for the phone to pair")
+    wait_group.add_argument("--wait", type=nonnegative_int, default=None, metavar="SECONDS",
+                            help="seconds to wait for pairing (default: until the code expires)")
     ap.add_argument("--install-startup", "--autostart", dest="install_startup",
                     action="store_true",
                     help="install Codex remote-control startup automatically after pairing")
@@ -602,4 +614,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()
+        sys.exit(130)
