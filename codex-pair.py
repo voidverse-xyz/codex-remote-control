@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-codex-rc-up.py — one-shot Codex remote-control setup + checklist.
+codex-pair.py — one-shot Codex remote-control setup + checklist.
 
 Walks the whole host-side flow, prints [ OK ] / [WARN] / [FAIL] for each step
 with the error detail when something goes wrong, and at the end prints the
@@ -8,16 +8,17 @@ PAIRING CODE you type into the phone.
 
 Pure standard library — works on any Linux VM that has python3 and the Codex CLI.
 
-  python3 codex-rc-up.py            # checklist, print code, then wait for the phone to pair
-  python3 codex-rc-up.py --no-wait  # just print the code and exit, don't wait
-  python3 codex-rc-up.py --wait 120 # cap the wait at 120s (default: until the code expires)
-  python3 codex-rc-up.py --install-startup # install startup automatically after pairing
-  CODEX_HOME=/custom python3 codex-rc-up.py
+  python3 codex-pair.py            # checklist, print code, then wait for the phone to pair
+  python3 codex-pair.py --no-wait  # just print the code and exit, don't wait
+  python3 codex-pair.py --wait 120 # cap the wait at 120s (default: until the code expires)
+  python3 codex-pair.py --install-startup # install startup automatically after pairing
+  CODEX_HOME=/custom python3 codex-pair.py
 
 Exit 0 if paired (or --no-wait and a code was minted); 1 if a check failed or
 pairing timed out.
 """
 import argparse
+import datetime
 import json
 import os
 import platform
@@ -72,12 +73,22 @@ def report(status, label, detail=""):
         FAILED.append(label)
 
 
+_CODEX_VERSION = None
+
+
 def codex_version():
+    # The version is stable for the life of the process, so cache the first real
+    # answer instead of re-spawning `codex --version` on every HTTP request
+    # (the pairing wait loop polls every few seconds).
+    global _CODEX_VERSION
+    if _CODEX_VERSION:
+        return _CODEX_VERSION
     try:
         out = subprocess.check_output(["codex", "--version"], text=True, timeout=20)
         for tok in out.split():
             if tok[:1].isdigit():
-                return tok.split("+")[0]
+                _CODEX_VERSION = tok.split("+")[0]
+                return _CODEX_VERSION
     except Exception:
         pass
     return "0.0.0"
@@ -201,7 +212,7 @@ def enable_systemd_autostart(codex_bin):
     try:
         SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
         SYSTEMD_SERVICE.write_text(systemd_unit(codex_bin))
-        report("OK", f"wrote systemd user service", str(SYSTEMD_SERVICE))
+        report("OK", "wrote systemd user service", str(SYSTEMD_SERVICE))
     except Exception as e:
         report("FAIL", "could not write systemd user service", str(e))
         return
@@ -364,7 +375,7 @@ def main():
         report("WARN", f"unexpected auth check status: HTTP {status}", str(body)[:200])
 
     # 4. websocket reachability (advisory) ------------------------------------
-    rc, out = run_codex(["doctor"], timeout=60)
+    _, out = run_codex(["doctor"], timeout=60)
     wsline = next((l.strip() for l in out.splitlines() if "websocket" in l.lower()), "")
     if "connected" in wsline.lower():
         report("OK", "doctor: websocket connected")
@@ -385,7 +396,7 @@ def main():
                "A pairing code can still be minted, but the host won't be controllable until the daemon runs.")
 
     # 6. start the remote-control daemon --------------------------------------
-    rc, out = run_codex(["remote-control", "start", "--json"], timeout=70)
+    _, out = run_codex(["remote-control", "start", "--json"], timeout=70)
     daemon_ok = False
     try:
         j = json.loads(next(l for l in out.splitlines() if l.strip().startswith("{")))
@@ -401,6 +412,8 @@ def main():
     try:
         install_id = INSTALL_ID_FILE.read_text().strip()
     except Exception:
+        install_id = ""
+    if not install_id:
         install_id = str(uuid.uuid4())
         try:
             INSTALL_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -408,8 +421,7 @@ def main():
         except Exception:
             pass
         report("INFO", "no installation_id found; generated one")
-    if install_id:
-        report("OK", "installation id resolved")
+    report("OK", "installation id resolved")
 
     # 8. enroll (mint the server token) ---------------------------------------
     status, body = http("POST", ENROLL, {
@@ -455,7 +467,6 @@ def main():
         return finish(manual)
 
     # Wait for the phone to pair (default behaviour).
-    import datetime
     if args.wait is not None:
         window = args.wait
     else:
